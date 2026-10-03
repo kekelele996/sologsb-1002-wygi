@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeftOutlined, ArrowRightOutlined, BranchesOutlined, CheckOutlined, CloseOutlined,
-  CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
+  CloudSyncOutlined, CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
   HistoryOutlined, LockOutlined, MenuFoldOutlined, MessageOutlined, PlusOutlined,
-  RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
+  RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, SyncOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
 } from '@ant-design/icons'
-import { Alert, Badge, Button, Card, Checkbox, Divider, Empty, Input, Modal, Radio, Segmented, Select, Space, Tag, Tooltip, message } from 'antd'
+import { Alert, Badge, Button, Card, Checkbox, Divider, Drawer, Empty, Input, Modal, Radio, Segmented, Select, Space, Switch, Tag, Timeline, Tooltip, message } from 'antd'
 import { submitRemotePatch } from './services/mockApi'
+import { useEditorialRepo } from './store/editorialRepo'
+import { useOfflineDraft } from './store/offlineDraft'
 import { useReviewStore } from './store/review'
 import type { Comment, CommentType, Paragraph, Role } from './types'
 
@@ -25,6 +27,13 @@ export default function App() {
     resolveSuggestion, mergeComment, toggleLock, createVersion, addConflict, resolveConflict, dismissConflict,
     undo, redo, save, resetDemo,
   } = useReviewStore()
+  const {
+    online, queue, conflicts: syncConflicts, syncLog, syncing, localRevisions, simulateFailure, migratedCount,
+    setOnline, setSimulateFailure, addAnnotation: addOfflineAnnotation, syncNow,
+    resolveConflict: resolveSyncConflict, acknowledgeMigration, seedLegacyAndMigrate, resetDraft,
+  } = useOfflineDraft()
+  const { revisions: masterRevisions, reviseParagraph, resetRepo } = useEditorialRepo()
+  const [syncOpen, setSyncOpen] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const [commentType, setCommentType] = useState<CommentType>('comment')
   const [commentBody, setCommentBody] = useState('')
@@ -49,6 +58,13 @@ export default function App() {
     if (commentFilter === 'duplicate') return duplicateParagraphIds.has(comment.paragraphId) && comment.status === 'open'
     return true
   }).sort((a, b) => b.createdAt - a.createdAt), [commentFilter, comments, duplicateParagraphIds])
+
+  useEffect(() => {
+    if (migratedCount > 0) {
+      message.info(`升级迁移完成：${migratedCount} 条旧批注已按合订稿现版本补上修订号`)
+      acknowledgeMigration()
+    }
+  }, [migratedCount, acknowledgeMigration])
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -98,9 +114,15 @@ export default function App() {
   }
   const submitComment = () => {
     if (!selected || !commentBody.trim()) { message.warning('请填写批注内容'); return }
-    addComment({ paragraphId: selected.id, type: commentType, quote, body: commentBody.trim(), suggestion: commentType === 'suggestion' ? suggestion : undefined })
+    const payload = { paragraphId: selected.id, type: commentType, quote, body: commentBody.trim(), suggestion: commentType === 'suggestion' ? suggestion : undefined }
+    if (role === 'reviewer' && !online) {
+      addOfflineAnnotation({ ...payload, author: '审稿人 A' })
+      message.success('离线中：批注已存入本机批注稿，同段落会自动并成一条，回网后按修订号对账')
+    } else {
+      addComment(payload)
+      message.success(commentType === 'suggestion' ? '修改建议已提交' : '段落批注已添加')
+    }
     setCommentBody(''); setSuggestion(''); setQuote(''); setComposerOpen(false)
-    message.success(commentType === 'suggestion' ? '修改建议已提交' : '段落批注已添加')
   }
   const handleMockConflict = async () => {
     if (!selected) return
@@ -132,6 +154,12 @@ export default function App() {
           <Segmented block value={role} onChange={(value) => setRole(value as Role)} options={(Object.keys(roleMeta) as Role[]).map((item) => ({ label: <span>{roleIcon(item)} {roleMeta[item].label.replace('工作区', '')}</span>, value: item }))} />
         </div>
         <Space>
+          <Tooltip title="审稿人网络状态：离线时批注只存本机批注稿">
+            <Switch checked={online} checkedChildren="在线" unCheckedChildren="离线" onChange={setOnline} />
+          </Tooltip>
+          <Badge count={queue.length + syncConflicts.filter((item) => !item.resolution).length} size="small">
+            <Button icon={<CloudSyncOutlined />} onClick={() => setSyncOpen(true)}>离线同步</Button>
+          </Badge>
           <Badge dot={dirty}><Button icon={<SaveOutlined />} onClick={() => { save(); message.success('草稿已保存到浏览器') }}>保存</Button></Badge>
           <Button icon={<UndoOutlined />} disabled={!useReviewStore.getState().past.length} onClick={undo} />
           <Button icon={<RedoOutlined />} disabled={!useReviewStore.getState().future.length} onClick={redo} />
@@ -142,6 +170,7 @@ export default function App() {
       <div className="role-banner" style={{ '--role-color': roleMeta[role].color } as React.CSSProperties}>
         <span className="role-badge">{roleIcon(role)} {roleMeta[role].label}</span>
         <span>{roleMeta[role].description}</span>
+        {!online && <Tag color="orange">审稿人离线中 · 批注仅保存本机</Tag>}
         <span className="paper-state"><FileTextOutlined /> 论文正文 v2.4</span>
       </div>
 
@@ -211,6 +240,9 @@ export default function App() {
                     <div className="paragraph-meta">
                       <span className="paragraph-no">{paragraph.number}</span>
                       <span>段落 {paragraph.number.replace('.', '')}</span>
+                      <Tooltip title={`合订稿修订号 r${masterRevisions[paragraph.id] ?? 1} · 本机批注基准 r${localRevisions[paragraph.id] ?? 1}`}>
+                        <span className={`revision-chip ${(localRevisions[paragraph.id] ?? 1) !== (masterRevisions[paragraph.id] ?? 1) ? 'diverged' : ''}`}>r{masterRevisions[paragraph.id] ?? 1}</span>
+                      </Tooltip>
                       {paragraph.status === 'locked' && <Tag icon={<LockOutlined />} color="purple">已锁定</Tag>}
                       {paragraph.status === 'accepted' && <Tag icon={<CheckOutlined />} color="green">已确认</Tag>}
                       {!!paragraphCommentCounts[paragraph.id] && <Tag icon={<MessageOutlined />}>{paragraphCommentCounts[paragraph.id]} 条意见</Tag>}
@@ -303,9 +335,91 @@ export default function App() {
         </div>
       </Modal>
 
+      <Drawer
+        title={<span><CloudSyncOutlined /> 离线批注同步 · 按段落修订号对账</span>}
+        open={syncOpen} onClose={() => setSyncOpen(false)} width={600}
+      >
+        <div className="sync-panel">
+          <div className="sync-actions">
+            <Button type="primary" icon={<SyncOutlined spin={syncing} />} loading={syncing} disabled={!online || queue.length === 0} onClick={() => void syncNow()}>
+              {online ? '立即同步' : '离线中，回网后自动对账'}
+            </Button>
+            <Checkbox checked={simulateFailure} onChange={(event) => setSimulateFailure(event.target.checked)}>模拟提交中断</Checkbox>
+          </div>
+          <div className="sync-actions">
+            <Button size="small" onClick={() => { if (selected) { reviseParagraph(selected.id); message.warning(`编辑部已修订段落 ${selected.number}，合订稿修订号已推进`) } }}>编辑部修订选中段落</Button>
+            <Button size="small" onClick={() => { const count = seedLegacyAndMigrate(); message.success(`迁移完成：${count} 条旧批注按合订稿现版本补上修订号`) }}>模拟旧版批注升级</Button>
+          </div>
+
+          <Divider orientation="left" plain>待同步队列（{queue.length}）</Divider>
+          {queue.map((item) => {
+            const paragraph = paragraphs.find((entry) => entry.id === item.paragraphId)
+            return (
+              <Card key={item.id} size="small" className="sync-item">
+                <div className="sync-item-head">
+                  <b>段落 {paragraph?.number ?? item.paragraphId}</b>
+                  <Tag color="blue">基准 r{item.baseRevision}</Tag>
+                  <Tag>{item.annotations.length} 条并一</Tag>
+                  {item.status === 'failed' && <Tag color="red">未送达 · 重试 {item.attempts} 次</Tag>}
+                  {item.status === 'pending' && <Tag color="gold">待同步</Tag>}
+                </div>
+                {item.annotations.map((annotation) => (
+                  <p key={annotation.id} className="sync-annotation">“{annotation.quote || '（无引用）'}” — {annotation.body}</p>
+                ))}
+                {item.lastError && <p className="sync-error">{item.lastError}</p>}
+              </Card>
+            )
+          })}
+          {!queue.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="队列已清空，已并入的不会重发" />}
+
+          <Divider orientation="left" plain>对账冲突 · 等编辑定夺（{syncConflicts.filter((item) => !item.resolution).length}）</Divider>
+          {syncConflicts.map((conflict) => {
+            const paragraph = paragraphs.find((entry) => entry.id === conflict.paragraphId)
+            return (
+              <Alert
+                key={conflict.id}
+                type={conflict.resolution ? 'info' : 'warning'}
+                showIcon
+                message={`段落 ${paragraph?.number ?? conflict.paragraphId}：批注基于 r${conflict.baseRevision}，合订稿已到 r${conflict.masterRevision}`}
+                description={(
+                  <div className="conflict-content">
+                    <div><b>批注稿（本机）</b>{conflict.item.annotations.map((annotation) => <p key={annotation.id}>“{annotation.quote}” — {annotation.body}</p>)}</div>
+                    <div><b>合订稿（编辑部 r{conflict.masterRevision}）</b><p>{conflict.masterText}</p></div>
+                    {conflict.resolution
+                      ? <Tag color={conflict.resolution === 'merged' ? 'green' : 'default'}>{conflict.resolution === 'merged' ? '编辑定夺：仍并入批注' : '编辑定夺：保留合订稿'}</Tag>
+                      : role === 'editor'
+                        ? <Space><Button size="small" type="primary" onClick={() => resolveSyncConflict(conflict.id, 'merge')}>仍并入批注</Button><Button size="small" onClick={() => resolveSyncConflict(conflict.id, 'keep-master')}>保留合订稿</Button></Space>
+                        : <Tag color="orange">两边均已保留，等编辑定夺</Tag>}
+                  </div>
+                )}
+              />
+            )
+          })}
+          {!syncConflicts.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有对账冲突" />}
+
+          <Divider orientation="left" plain>段落修订号对照</Divider>
+          <div className="revision-table">
+            <div className="revision-row revision-head"><span>段落</span><span>合订稿</span><span>本机基准</span></div>
+            {paragraphs.map((paragraph) => (
+              <div key={paragraph.id} className={`revision-row ${(localRevisions[paragraph.id] ?? 1) !== (masterRevisions[paragraph.id] ?? 1) ? 'diverged' : ''}`}>
+                <span>{paragraph.number}</span>
+                <span>r{masterRevisions[paragraph.id] ?? 1}</span>
+                <span>r{localRevisions[paragraph.id] ?? 1}</span>
+              </div>
+            ))}
+          </div>
+
+          <Divider orientation="left" plain>同步日志</Divider>
+          <Timeline
+            items={syncLog.slice(0, 12).map((entry) => ({ children: `${formatDate(entry.time)} · ${entry.text}` }))}
+          />
+          {!syncLog.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有同步记录" />}
+        </div>
+      </Drawer>
+
       <footer className="app-footer">
         <span>本地草稿自动持久化 · 模拟接口用于演示多人修改后的冲突处理</span>
-        <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => { resetDemo(); message.success('已重置示例数据') }}>重置示例</Button>
+        <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => { resetDemo(); resetRepo(); resetDraft(); message.success('已重置示例数据') }}>重置示例</Button>
       </footer>
     </div>
   )
