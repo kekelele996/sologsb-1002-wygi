@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeftOutlined, ArrowRightOutlined, BranchesOutlined, CheckOutlined, CloseOutlined,
-  CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
+  CloudSyncOutlined, CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
   HistoryOutlined, LockOutlined, MenuFoldOutlined, MessageOutlined, PlusOutlined,
   RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
 } from '@ant-design/icons'
@@ -9,6 +9,7 @@ import { Alert, Badge, Button, Card, Checkbox, Divider, Empty, Input, Modal, Rad
 import { submitRemotePatch } from './services/mockApi'
 import { useReviewStore } from './store/review'
 import type { Comment, CommentType, Paragraph, Role } from './types'
+import SyncConsole from './components/SyncConsole'
 
 const roleMeta: Record<Role, { label: string; description: string; color: string }> = {
   author: { label: '作者工作区', description: '编辑正文，逐条接受或拒绝修改建议', color: '#2f6f5e' },
@@ -35,6 +36,7 @@ export default function App() {
   const [versionA, setVersionA] = useState(versions[1]?.id ?? versions[0]?.id)
   const [versionB, setVersionB] = useState(versions[0]?.id)
   const [versionLabel, setVersionLabel] = useState('')
+  const [syncConsoleOpen, setSyncConsoleOpen] = useState(false)
 
   const selected = paragraphs.find((paragraph) => paragraph.id === selectedParagraphId) ?? paragraphs[0]
   const sections = useMemo(() => Array.from(new Set(paragraphs.map((paragraph) => paragraph.section))), [paragraphs])
@@ -136,6 +138,7 @@ export default function App() {
           <Button icon={<UndoOutlined />} disabled={!useReviewStore.getState().past.length} onClick={undo} />
           <Button icon={<RedoOutlined />} disabled={!useReviewStore.getState().future.length} onClick={redo} />
           <Button danger={conflicts.length > 0} icon={<SwapOutlined />} onClick={() => void handleMockConflict()}>模拟冲突</Button>
+          <Button type="primary" ghost icon={<CloudSyncOutlined />} onClick={() => setSyncConsoleOpen(true)}>离线对账台</Button>
         </Space>
       </header>
 
@@ -307,6 +310,8 @@ export default function App() {
         <span>本地草稿自动持久化 · 模拟接口用于演示多人修改后的冲突处理</span>
         <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => { resetDemo(); message.success('已重置示例数据') }}>重置示例</Button>
       </footer>
+
+      <SyncConsole open={syncConsoleOpen} onClose={() => setSyncConsoleOpen(false)} />
     </div>
   )
 }

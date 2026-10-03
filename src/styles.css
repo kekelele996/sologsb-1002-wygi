@@ -113,3 +113,34 @@ kbd { padding: 1px 4px; border: 1px solid #706158; border-radius: 3px; color: #f
   .comments-panel > .keyboard-hint { position: static; width: auto; }
   .conflict-content { grid-template-columns: 1fr; }
 }
+
+/* ── 离线对账台 ── */
+.sync-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.sync-stats .ant-card-body { padding: 12px 16px; }
+.sync-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border: 1px solid #e4ddd2; border-radius: 8px; background: #fdfaf5; }
+.sync-controls .control-block { display: inline-flex; align-items: center; }
+.pulled-at { font-size: 12px; }
+.sync-grid { display: grid; grid-template-columns: minmax(300px, 1.05fr) minmax(320px, 1fr) minmax(300px, 1.05fr); gap: 12px; align-items: start; }
+.sync-col .ant-card-head { min-height: 40px; }
+.sync-col .ant-card-head-title { font-size: 13px; }
+.paragraph-rev-list { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow: auto; padding-right: 4px; }
+.rev-row { padding: 8px 10px; border: 1px solid #ece4d8; border-radius: 7px; background: #fffdf9; }
+.rev-row-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.rev-row-head .ant-btn { margin-left: auto; }
+.rev-text { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: #4c433c; }
+.offline-composer { display: flex; flex-direction: column; gap: 6px; padding: 9px; border: 1px dashed #d9c7ae; border-radius: 8px; background: #fff9f0; }
+.queue-batch { margin-bottom: 8px; background: #fffdf5; }
+.queue-batch.has-error { border-color: #f0b7b1; }
+.batch-members { margin-top: 6px; font-size: 12px; }
+.batch-member { margin: 3px 0; padding: 3px 7px; border-left: 2px solid #c8a06b; background: #faf3e7; border-radius: 0 4px 4px 0; line-height: 1.5; }
+.offline-all { display: flex; flex-direction: column; gap: 6px; max-height: 24vh; overflow: auto; }
+.offline-item { padding: 6px 8px; border: 1px solid #eee7db; border-radius: 6px; font-size: 12px; background: #fffdf9; }
+.offline-item-body { margin: 3px 0 5px; color: #5a4f45; line-height: 1.5; }
+.conflict-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.conflict-side { padding: 7px 9px; border-radius: 6px; font-size: 12px; }
+.conflict-side small { color: #8a7c6f; }
+.conflict-side p { margin: 3px 0 6px; line-height: 1.55; }
+.conflict-side pre { margin: 0; white-space: pre-wrap; font-family: inherit; line-height: 1.55; }
+.master-side { background: #f3f7f4; border: 1px solid #d5e6dc; }
+.offline-side { background: #fdf4ea; border: 1px solid #ecd9bf; }
+.conflict-card.resolved { opacity: .72; }
